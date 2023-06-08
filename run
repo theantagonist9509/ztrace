@@ -1,0 +1,1 @@
+source ~/.profile && zig build run && cp image.ppm ~/storage/shared/termux

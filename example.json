@@ -1,0 +1,39 @@
+{
+	"camera": {
+		"pos": [-10, 15, 10],
+		"pitch": -45,
+		"yaw": 30,
+		"viewport_width": 30,
+		"fov": 60,
+		"image": {
+			"width": 1600,
+			"height": 900
+		},
+		"gamma": 2
+	},
+	"spheres": [
+		{
+			"center": [0, -100, 0],
+			"radius": 95,
+			"color": [1, 1, 1]
+		},
+		{
+			"center": [-15, 0, -10],
+			"radius": 5,
+			"color": [1, 0.25, 0.25]
+		},
+		{
+			"center": [0, 0, -10],
+			"radius": 5,
+			"color": [0.25, 1, 0.25]
+		},
+		{
+			"center": [15, 0, -10],
+			"radius": 5,
+			"color": [0.25, 0.25, 1]
+		}
+
+
+	],
+	"sky_color": [1, 1, 1]
+}
