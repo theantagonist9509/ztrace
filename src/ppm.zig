@@ -12,7 +12,7 @@ pub const Ppm = struct {
             self.width,
             self.height,
         });
-        try file.seekFromEnd(0);
+        try file.seekFromEnd(0); // need this?
         try file.writeAll(self.data);
     }
 };

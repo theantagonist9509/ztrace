@@ -23,7 +23,7 @@ pub const World = struct {
 
     pub fn raytrace(self: *World, allocator: std.mem.Allocator, num_threads: usize, max_depth: u32) !void {
         const child_threads = try allocator.alloc(std.Thread, num_threads - 1);
-        for (child_threads, 0..) |*thread, i| thread.* = try std.Thread.spawn(.{}, raytraceThunk, .{ // set global var instead of passing as fn arg?
+        for (child_threads, 0..) |*thread, i| thread.* = try std.Thread.spawn(.{}, raytraceThunk, .{
             self,
             num_threads,
             i,
@@ -39,34 +39,36 @@ pub const World = struct {
             var depth: u32 = 1;
             var color = self.sky_color;
             var current_ray = self.camera.ray(i);
-            while (true) {
-                var nearest_dist = std.math.floatMax(f32);
-                var nearest_sphere: *const Sphere = undefined;
-                for (self.spheres) |*sphere| { // propose |*const sphere|, make references to captures like |sphere| give errors as it is unknown whether they are passed by value or reference
-                    if (sphere.hitDist(current_ray)) |dist| {
-                        if (dist < nearest_dist) {
-                            nearest_dist = dist;
-                            nearest_sphere = sphere;
+            depth: while (true) || {
+                for (0..num_diffuse_rays) {
+                    var nearest_dist = std.math.floatMax(f32);
+                    var nearest_sphere: *const Sphere = undefined;
+                    for (self.spheres) |*sphere| { // propose |*const sphere|, make references to captures like |sphere| give errors as it is unknown whether they are passed by value or reference
+                        if (sphere.hitDist(current_ray)) |dist| {
+                            if (dist < nearest_dist) {
+                                nearest_dist = dist;
+                                nearest_sphere = sphere;
+                            }
                         }
                     }
-                }
-                if (nearest_dist == std.math.floatMax(f32)) {
-                    break;
-                }
-                color *= nearest_sphere.color;
-                if (depth == max_depth) {
-                    break;
-                }
-                depth += 1;
-                const hit_coords = current_ray.coords(nearest_dist);
-                const normal = (hit_coords - nearest_sphere.center) / @splat(3, nearest_sphere.radius);
+                    if (nearest_dist == std.math.floatMax(f32)) {
+                        break :depth;
+                    }
+                    color *= nearest_sphere.color;
+                    if (depth == max_depth) {
+                        break :depth;
+                    }
+                    depth += 1;
+                    const hit_coords = current_ray.coords(nearest_dist);
+                    const normal = (hit_coords - nearest_sphere.center) / @splat(3, nearest_sphere.radius);
 
-                color *= @splat(3, std.math.clamp(-1 * vec3_utils.dot(current_ray.dir, normal), 0, 1));
+                    color *= @splat(3, std.math.clamp(-1 * vec3_utils.dot(current_ray.dir, normal), 0, 1));
 
-                current_ray = .{
-                    .origin = hit_coords,
-                    .dir = current_ray.dir - @splat(3, 2 * vec3_utils.dot(current_ray.dir, normal)) * normal,
-                };
+                    current_ray = .{
+                        .origin = hit_coords,
+                        .dir = current_ray.dir - @splat(3, 2 * vec3_utils.dot(current_ray.dir, normal)) * normal,
+                    };
+                }
             }
             color[0] = std.math.pow(f32, color[0], 1 / self.camera.gamma);
             color[1] = std.math.pow(f32, color[1], 1 / self.camera.gamma);

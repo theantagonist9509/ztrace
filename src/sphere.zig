@@ -10,7 +10,7 @@ pub const Sphere = struct {
     center: Vec3,
     radius: f32,
 
-    color: Color, // split this stuff in favour of SoA instead of AoS?
+    color: Color,
 
     pub fn hitDist(self: Sphere, ray: Ray) ?f32 {
         const a = vec3_utils.dot(ray.dir, ray.dir); // square function in vec3_utils?
