@@ -7,6 +7,7 @@ const Pixmap = @import("pixmap.zig").Pixmap;
 const Planes = @import("planes.zig").Planes;
 const Ray = @import("ray.zig").Ray;
 const Spheres = @import("spheres.zig").Spheres;
+const ThreadSafeProgressBar = @import("threadsafeprogressbar.zig").ThreadSafeProgressBar;
 const Triangles = @import("triangles.zig").Triangles;
 const TypeId = @import("typeid.zig").TypeId;
 
@@ -71,7 +72,7 @@ pub const World = struct { // Scene? (separate camera?)
         // TODO come up with a better solution than caching; stop worrying about gamma? (if yes, get rid of generic nature of Pixmap and rename to Ppm)
     };
 
-    pub fn initFromJsonStruct(allocator: std.mem.Allocator, json: Json) !World { // put in Json? initializeWorldFromJsonStruct? createWorldFromJsonStruct?
+    pub fn initFromJsonStruct(allocator: std.mem.Allocator, json: Json) !World { // put in Json? initializeWorldFromJsonStruct? createWorldFromJsonStruct? divide this large block into a bunch of functions?
         var world: World = undefined;
 
         world.planes = Planes{
@@ -129,7 +130,7 @@ pub const World = struct { // Scene? (separate camera?)
 
                         vertex.* = json_stl_object.position + @as(Vector3, @splat(json_stl_object.scale)) * transformed_vertex;
                     }
-                    geometry.updateNormal(); // need a separate function?
+                    geometry.updateNormal();
 
                     material.color = json_stl_object.color;
                     material.shininess = json_stl_object.shininess;
@@ -147,7 +148,7 @@ pub const World = struct { // Scene? (separate camera?)
             triangle_count.* = try getStlTriangleCountFromFile(file.*);
             total_triangle_count += triangle_count.*;
         }
-        defer for (json_stl_object_file_slice) |file| { // divide this large block into a bunch of functions?
+        defer for (json_stl_object_file_slice) |file| {
             file.close();
         };
 
@@ -205,30 +206,29 @@ pub const World = struct { // Scene? (separate camera?)
         return world;
     }
 
-    pub fn raytrace(self: World, allocator: std.mem.Allocator, thread_count: usize, rays_per_pixel: u32, image: Pixmap(u8), max_ray_depth: u32, gamma: f32) !void { // check pass by value / reference and ownership everywhere
+    pub fn raytrace(self: World, allocator: std.mem.Allocator, thread_count: usize, rays_per_pixel: u32, image: Pixmap(u8), max_ray_depth: u32, gamma: f32, progress_bar: *ThreadSafeProgressBar) !void { // check pass by value / reference and ownership everywhere
+        progress_bar.start(@as(u32, @intCast(image.data.len / 3)));
+
         const child_threads = try allocator.alloc(std.Thread, thread_count - 1);
         for (child_threads, 0..) |*thread, i| {
-            thread.* = try std.Thread.spawn(.{}, raytraceThunk, .{ self, thread_count, i, rays_per_pixel, image, max_ray_depth, gamma });
+            thread.* = try std.Thread.spawn(.{}, raytraceThunk, .{ self, thread_count, i, rays_per_pixel, image, max_ray_depth, gamma, progress_bar });
         }
-        self.raytraceThunk(thread_count, thread_count - 1, rays_per_pixel, image, max_ray_depth, gamma);
+        self.raytraceThunk(thread_count, thread_count - 1, rays_per_pixel, image, max_ray_depth, gamma, progress_bar);
         for (child_threads) |thread| {
             thread.join(); // do using {} (against short hand notation)
         }
     }
 
-    fn raytraceThunk(self: World, thread_count: usize, thread_index: usize, rays_per_pixel: u32, image: Pixmap(u8), max_ray_depth: u32, gamma: f32) void {
-        var prng = std.rand.DefaultPrng.init(thread_index); // seed?
+    fn raytraceThunk(self: World, thread_count: usize, thread_index: usize, rays_per_pixel: u32, image: Pixmap(u8), max_ray_depth: u32, gamma: f32, progress_bar: *ThreadSafeProgressBar) void {
+        var prng = std.rand.DefaultPrng.init(thread_index);
         const random = prng.random();
 
         var i: usize = thread_index;
         while (i < image.data.len / 3) : (i += thread_count) {
-            if (thread_index == thread_count - 1) {
-                std.debug.print("{}/{}\n", .{ i / thread_count, image.data.len / (3 * thread_count) });
-            }
             var average_color: Vector3 = @splat(0);
             for (0..rays_per_pixel) |_| {
                 var depth: u32 = 1;
-                var color: Vector3 = @splat(1);
+                var accumulated_color: Vector3 = @splat(1);
                 var current_ray = self.camera.ray(image, random, i);
                 while (true) {
                     const closest_object_data = Ray.getClosestObjectData(.{ self.planes, self.triangles, self.spheres }, current_ray);
@@ -243,7 +243,7 @@ pub const World = struct { // Scene? (separate camera?)
                         .triangles => self.triangles.materials[closest_object_data.index],
                     };
 
-                    color *= closest_object_material.color;
+                    accumulated_color *= closest_object_material.color;
 
                     if (depth == max_ray_depth) {
                         break;
@@ -268,12 +268,14 @@ pub const World = struct { // Scene? (separate camera?)
                     else
                         (vector3_utilities.unit(normal + vector3_utilities.randomUnit(random)));
                 }
-                average_color += (self.void_color + @as(Vector3, @splat((current_ray.direction[1] + 1) / 2)) * (self.sky_color - self.void_color)) * color; // ray_color instead of color, average_ray_color
+                average_color += (self.void_color + @as(Vector3, @splat((current_ray.direction[1] + 1) / 2)) * (self.sky_color - self.void_color)) * accumulated_color;
             }
             average_color /= @as(Vector3, @splat(@as(f32, @floatFromInt(rays_per_pixel)))); // need @as()? propose removal of this @as business altogether or just allow me to coerce implicitly in cases like these
             inline for (0..3) |j| { // @ptrCast() for @Vector()? why don't @Vector()s support field access??
                 image.data[3 * i + j] = @as(u8, @intFromFloat(std.math.pow(f32, average_color[j], 1 / gamma) * 255));
             }
+
+            progress_bar.advance();
         }
     }
 };

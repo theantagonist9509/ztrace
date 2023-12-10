@@ -1,4 +1,4 @@
-// USE ARRAY INSTEAD OF VECTOR? (NO PADDING MEMORY NEEDED)
+// USE ARRAY INSTEAD OF VECTOR? (NO PADDING MEMORY NEEDED) (if yes, make pixmap'd data have type []Vector3 = [][3]f32 and make use of this when copying data)
 
 const std = @import("std");
 
@@ -17,11 +17,11 @@ pub inline fn unit(a: Vector3) Vector3 {
 }
 
 pub inline fn cross(a: Vector3, b: Vector3) Vector3 {
-    var ret: Vector3 = undefined;
-    inline for (0..3) |i| {
-        ret[i] = a[(i + 1) % 3] * b[(i + 2) % 3] - b[(i + 1) % 3] * a[(i + 2) % 3];
-    }
-    return ret;
+    var cross_product: Vector3 = undefined;
+    inline for (0..3) |i|
+        cross_product[i] = a[(i + 1) % 3] * b[(i + 2) % 3] - b[(i + 1) % 3] * a[(i + 2) % 3];
+
+    return cross_product;
 }
 
 pub inline fn randomUnit(random: std.rand.Random) Vector3 {

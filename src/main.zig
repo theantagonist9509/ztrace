@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Pixmap = @import("pixmap.zig").Pixmap;
+const ThreadSafeProgressBar = @import("threadsafeprogressbar.zig").ThreadSafeProgressBar;
 const World = @import("world.zig").World;
 
 pub fn main() !void {
@@ -34,7 +35,11 @@ pub fn main() !void {
 
     const world_json = try World.Json.initFromFile(allocator, json_sub_path);
     const world = try World.initFromJsonStruct(allocator, world_json);
-    try world.raytrace(allocator, num_threads, rays_per_pixel, image, max_ray_depth, gamma);
+
+    var progress_bar: ThreadSafeProgressBar = undefined;
+    try world.raytrace(allocator, num_threads, rays_per_pixel, image, max_ray_depth, gamma, &progress_bar);
+    ThreadSafeProgressBar.finish();
+
     try image.writeToFile(image_sub_path);
 }
 
@@ -47,29 +52,26 @@ inline fn parseArgs(args: *std.process.ArgIterator, field_pointers: anytype) !vo
                     if (info.size == .Slice and info.child == u8) {
                         field_pointer.* = @as([]const u8, @ptrCast(arg));
                     } else {
-                        return error.ParseArgsError;
+                        @compileError("Parsing of type " ++ @typeName(T) ++ " not handled");
                     }
                 },
                 .Int => |info| {
                     if (info.signedness == .unsigned) {
                         field_pointer.* = try std.fmt.parseUnsigned(T, arg, 10);
                     } else {
-                        return error.ParseArgsError;
+                        @compileError("Parsing of type " ++ @typeName(T) ++ " not handled");
                     }
                 },
                 .Float => {
                     field_pointer.* = try std.fmt.parseFloat(T, arg);
                 },
-                else => {
-                    return error.ParseArgsError;
-                },
+                else => @compileError("Parsing of type " ++ @typeName(T) ++ " not handled"),
             }
         } else {
             return error.ParseArgsError;
         }
     }
 
-    if (args.skip()) {
+    if (args.skip())
         return error.ParseArgsError;
-    }
 }
