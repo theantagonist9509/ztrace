@@ -11,7 +11,6 @@ pub fn Pixmap(comptime T: type) type {
             defer file.close();
 
             try file.writer().print("P6\n{} {}\n255\n", .{ self.width, self.height });
-            try file.seekFromEnd(0);
             try file.writeAll(self.data);
         }
     };

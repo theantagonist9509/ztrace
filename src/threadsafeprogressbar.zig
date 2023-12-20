@@ -3,14 +3,12 @@ const std = @import("std");
 pub const ThreadSafeProgressBar = struct {
     mutex: std.Thread.Mutex,
 
-    tick_count: u32,
-    ticks_for_completion: u32,
-
-    const Self = @This();
+    tick_count: usize,
+    ticks_for_completion: usize,
 
     const bar_width = 50;
 
-    pub fn start(self: *Self, ticks_for_completion: u32) void {
+    pub fn start(self: *ThreadSafeProgressBar, ticks_for_completion: usize) void {
         self.mutex = .{};
         self.tick_count = 0;
         self.ticks_for_completion = ticks_for_completion;
@@ -22,7 +20,7 @@ pub const ThreadSafeProgressBar = struct {
         std.io.getStdOut().writeAll("\n") catch unreachable;
     }
 
-    pub fn advance(self: *Self) void {
+    pub fn advance(self: *ThreadSafeProgressBar) void {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -32,7 +30,7 @@ pub const ThreadSafeProgressBar = struct {
             self.print();
     }
 
-    fn print(self: *Self) void {
+    fn print(self: *ThreadSafeProgressBar) void {
         var bar = [_]u8{ '\r', '[' } ++ [_]u8{' '} ** bar_width ++ [_]u8{']'};
         @memset(bar[2..][0 .. (bar_width * self.tick_count) / self.ticks_for_completion], '#');
 

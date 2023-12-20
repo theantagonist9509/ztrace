@@ -207,15 +207,19 @@ pub const World = struct { // Scene? (separate camera?)
     }
 
     pub fn raytrace(self: World, allocator: std.mem.Allocator, thread_count: usize, rays_per_pixel: u32, image: Pixmap(u8), max_ray_depth: u32, gamma: f32, progress_bar: *ThreadSafeProgressBar) !void { // check pass by value / reference and ownership everywhere
-        progress_bar.start(@as(u32, @intCast(image.data.len / 3)));
-
         const child_threads = try allocator.alloc(std.Thread, thread_count - 1);
-        for (child_threads, 0..) |*thread, i| {
-            thread.* = try std.Thread.spawn(.{}, raytraceThunk, .{ self, thread_count, i, rays_per_pixel, image, max_ray_depth, gamma, progress_bar });
-        }
-        self.raytraceThunk(thread_count, thread_count - 1, rays_per_pixel, image, max_ray_depth, gamma, progress_bar);
-        for (child_threads) |thread| {
-            thread.join(); // do using {} (against short hand notation)
+
+        {
+            progress_bar.start(image.data.len / 3);
+            defer ThreadSafeProgressBar.finish();
+
+            for (child_threads, 0..) |*thread, i| {
+                thread.* = try std.Thread.spawn(.{}, raytraceThunk, .{ self, thread_count, i, rays_per_pixel, image, max_ray_depth, gamma, progress_bar });
+            }
+            self.raytraceThunk(thread_count, thread_count - 1, rays_per_pixel, image, max_ray_depth, gamma, progress_bar);
+            for (child_threads) |thread| {
+                thread.join(); // do using {} (against short hand notation)
+            }
         }
     }
 

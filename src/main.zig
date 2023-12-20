@@ -24,7 +24,7 @@ pub fn main() !void {
 
     parseArgs(&args, .{ &executable_sub_path, &json_sub_path, &num_threads, &image_width, &image_height, &rays_per_pixel, &max_ray_depth, &gamma, &image_sub_path }) catch {
         try std.io.getStdErr().writer().print("Usage: {s} <json_sub_path> <num_threads> <image_width> <image_height> <rays_per_pixel> <max_ray_depth> <gamma> <image_sub_path>\n", .{executable_sub_path});
-        std.process.exit(1);
+        return error.UsageError;
     };
 
     const image = Pixmap(u8){
@@ -38,7 +38,6 @@ pub fn main() !void {
 
     var progress_bar: ThreadSafeProgressBar = undefined;
     try world.raytrace(allocator, num_threads, rays_per_pixel, image, max_ray_depth, gamma, &progress_bar);
-    ThreadSafeProgressBar.finish();
 
     try image.writeToFile(image_sub_path);
 }
