@@ -25,7 +25,7 @@ pub const Spheres = struct {
             return if (distance < 0) std.math.floatMax(f32) else distance;
         }
 
-        pub inline fn getNormal(self: Geometry, coordinates: Vector3) Vector3 {
+        pub inline fn getUnitNormal(self: Geometry, coordinates: Vector3) Vector3 {
             return (coordinates - self.center) / @as(Vector3, @splat(self.radius));
         }
     };

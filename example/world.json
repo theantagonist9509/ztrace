@@ -1,62 +1,40 @@
 {
 	"camera": {
-		"position": [10, -15, 90],
-		"yaw": -5,
-		"pitch": 5,
-		"viewport_width": 30,
+		"position": [10, 15, 0],
+		"yaw": 5,
+		"pitch": -25,
+		"viewport_width": 10,
 		"fov": 90
 	},
 
-	"sky_color": [0, 0, 1],
+	"sky_color": [0.2, 0.2, 1],
 	"void_color": [1, 1, 1],
 
 	"planes": [
 		{
-			"reference_point": [0, 0, -90],
-			"normal": [1, 0, 1],
-			"color": [0.5, 0.5, 0.5],
+			"reference_point": [0, -25, 0],
+			"normal": [0, 1, 0],
+			"color": [0.4, 0.4, 0.8],
 			"shininess": 1
 		}
 	],
-	"triangles": [
-		{
-			"vertices": [
-				[0, 40, -40],
-				[-40, -40, -30],
-				[40, -40, -60]
-			],
-			"color": [0.5, 0.2, 0.5],
-			"shininess": 1
-		}
-	],
+	"triangles": [],
 	"spheres": [
 		{
-			"center": [-25, 0, -20],
-			"radius": 10,
-			"color": [0.8, 0.2, 0.2],
-			"shininess": 1
-		},
-		{
-			"center": [0, 0, -20],
-			"radius": 10,
-			"color": [0.2, 0.8, 0.2],
-			"shininess": 1
-		},
-		{
-			"center": [25, 0, -20],
-			"radius": 10,
-			"color": [0.2, 0.2, 0.8],
+			"center": [-25, 0, -62.5],
+			"radius": 20,
+			"color": [0.2, 1, 0.2],
 			"shininess": 1
 		}
 	],
 	"stl_objects": [
 		{
-			"binary_file_sub_path": "example.stl",
-			"position": [30, -30, 50],
-			"yaw": -45,
+			"binary_file_sub_path": "example/dragon.stl",
+			"position": [15, -7.5, -40],
+			"yaw": -40,
 			"pitch": -90,
 			"scale": 2,
-			"color": [0.8, 0.2, 0.8],
+			"color": [1, 0.2, 0.2],
 			"shininess": 1
 		}
 	]

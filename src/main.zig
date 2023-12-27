@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Pixmap = @import("pixmap.zig").Pixmap;
+const Ppm = @import("ppm.zig").Ppm;
 const ThreadSafeProgressBar = @import("threadsafeprogressbar.zig").ThreadSafeProgressBar;
 const World = @import("world.zig").World;
 
@@ -9,60 +9,64 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var executable_sub_path: []const u8 = undefined;
-    var json_sub_path: []const u8 = undefined;
-    var num_threads: usize = undefined;
-    var image_width: u32 = undefined;
-    var image_height: u32 = undefined;
-    var rays_per_pixel: u32 = undefined;
-    var max_ray_depth: u32 = undefined;
-    var gamma: f32 = undefined;
-    var image_sub_path: []const u8 = undefined;
-
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
-    parseArgs(&args, .{ &executable_sub_path, &json_sub_path, &num_threads, &image_width, &image_height, &rays_per_pixel, &max_ray_depth, &gamma, &image_sub_path }) catch {
-        try std.io.getStdErr().writer().print("Usage: {s} <json_sub_path> <num_threads> <image_width> <image_height> <rays_per_pixel> <max_ray_depth> <gamma> <image_sub_path>\n", .{executable_sub_path});
+    var parsed_args: struct {
+        executable_sub_path: []const u8,
+        json_sub_path: []const u8,
+        num_threads: usize,
+        image_width: u32,
+        image_height: u32,
+        rays_per_pixel: u32,
+        max_ray_depth: u32,
+        gamma: f32,
+        image_sub_path: []const u8,
+    } = undefined;
+
+    parseArgs(&args, &parsed_args) catch {
+        try printUsageErrorMessage(parsed_args);
         return error.UsageError;
     };
 
-    const image = Pixmap(u8){
-        .width = image_width,
-        .height = image_height,
-        .data = try arena.allocator().alloc(u8, 3 * image_width * image_height),
+    const image = Ppm{
+        .width = parsed_args.image_width,
+        .height = parsed_args.image_height,
+        .data = try arena.allocator().alloc(u8, 3 * parsed_args.image_width * parsed_args.image_height),
     };
 
-    const world_json = try World.Json.initFromFile(allocator, json_sub_path);
+    const world_json = try World.Json.initFromFile(allocator, parsed_args.json_sub_path);
     const world = try World.initFromJsonStruct(allocator, world_json);
 
     var progress_bar: ThreadSafeProgressBar = undefined;
-    try world.raytrace(allocator, num_threads, rays_per_pixel, image, max_ray_depth, gamma, &progress_bar);
+    try world.raytrace(allocator, parsed_args.num_threads, parsed_args.rays_per_pixel, image, parsed_args.max_ray_depth, parsed_args.gamma, &progress_bar);
 
-    try image.writeToFile(image_sub_path);
+    try image.writeToFile(parsed_args.image_sub_path);
 }
 
-inline fn parseArgs(args: *std.process.ArgIterator, field_pointers: anytype) !void {
-    inline for (field_pointers) |field_pointer| {
+inline fn parseArgs(args: *std.process.ArgIterator, parsed_args_out_pointer: anytype) !void {
+    inline for (std.meta.fields(@TypeOf(parsed_args_out_pointer.*))) |field_info| {
         if (args.next()) |arg| {
-            const T = @TypeOf(field_pointer.*);
+            const T = field_info.type;
+            const name = field_info.name;
+
             switch (@typeInfo(T)) {
                 .Pointer => |info| {
                     if (info.size == .Slice and info.child == u8) {
-                        field_pointer.* = @as([]const u8, @ptrCast(arg));
+                        @field(parsed_args_out_pointer.*, name) = @as([]const u8, @ptrCast(arg));
                     } else {
                         @compileError("Parsing of type " ++ @typeName(T) ++ " not handled");
                     }
                 },
                 .Int => |info| {
                     if (info.signedness == .unsigned) {
-                        field_pointer.* = try std.fmt.parseUnsigned(T, arg, 10);
+                        @field(parsed_args_out_pointer.*, name) = try std.fmt.parseUnsigned(T, arg, 10);
                     } else {
                         @compileError("Parsing of type " ++ @typeName(T) ++ " not handled");
                     }
                 },
                 .Float => {
-                    field_pointer.* = try std.fmt.parseFloat(T, arg);
+                    @field(parsed_args_out_pointer.*, name) = try std.fmt.parseFloat(T, arg);
                 },
                 else => @compileError("Parsing of type " ++ @typeName(T) ++ " not handled"),
             }
@@ -73,4 +77,13 @@ inline fn parseArgs(args: *std.process.ArgIterator, field_pointers: anytype) !vo
 
     if (args.skip())
         return error.ParseArgsError;
+}
+
+fn printUsageErrorMessage(args_struct: anytype) !void {
+    try std.io.getStdOut().writer().print("Usage: {s}", .{args_struct.executable_sub_path});
+
+    for (std.meta.fieldNames(@TypeOf(args_struct)).*[1..]) |field_name|
+        try std.io.getStdOut().writer().print(" <{s}>", .{field_name});
+
+    try std.io.getStdOut().writeAll("\n");
 }

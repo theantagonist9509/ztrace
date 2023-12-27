@@ -10,10 +10,10 @@ const Vector3 = vector3_utilities.Vector3;
 pub const Triangles = struct {
     pub const Geometry = struct {
         vertex_array: [3]Vector3, // vertices?
-        normal: Vector3,
+        unit_normal: Vector3,
 
         pub inline fn hitDistance(self: Geometry, ray: Ray) f32 {
-            const distance = vector3_utilities.dot(self.normal, self.vertex_array[0] - ray.origin) / vector3_utilities.dot(self.normal, ray.direction);
+            const distance = vector3_utilities.dot(self.unit_normal, self.vertex_array[0] - ray.origin) / vector3_utilities.dot(self.unit_normal, ray.direction);
 
             return if (distance > 0 and self.isInside(ray.coordinates(distance))) (distance) else (std.math.floatMax(f32));
         }
@@ -28,13 +28,13 @@ pub const Triangles = struct {
             return is_inside;
         }
 
-        pub inline fn getNormal(self: Geometry, coordinates: Vector3) Vector3 {
+        pub inline fn getUnitNormal(self: Geometry, coordinates: Vector3) Vector3 {
             _ = coordinates;
-            return self.normal;
+            return self.unit_normal;
         }
 
-        pub inline fn updateNormal(self: *Geometry) void {
-            self.normal = vector3_utilities.unit(vector3_utilities.cross(self.vertex_array[1] - self.vertex_array[0], self.vertex_array[2] - self.vertex_array[1]));
+        pub inline fn updateUnitNormal(self: *Geometry) void {
+            self.unit_normal = vector3_utilities.unit(vector3_utilities.cross(self.vertex_array[1] - self.vertex_array[0], self.vertex_array[2] - self.vertex_array[1]));
         }
     };
 

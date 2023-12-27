@@ -1,4 +1,4 @@
-// USE ARRAY INSTEAD OF VECTOR? (NO PADDING MEMORY NEEDED) (if yes, make pixmap'd data have type []Vector3 = [][3]f32 and make use of this when copying data)
+// USE ARRAY INSTEAD OF VECTOR? (NO PADDING MEMORY NEEDED)
 
 const std = @import("std");
 

@@ -3,8 +3,8 @@ const std = @import("std");
 const vector3_utilities = @import("vector3_utilities.zig");
 const Camera = @import("camera.zig").Camera;
 const Material = @import("material.zig").Material;
-const Pixmap = @import("pixmap.zig").Pixmap;
 const Planes = @import("planes.zig").Planes;
+const Ppm = @import("ppm.zig").Ppm;
 const Ray = @import("ray.zig").Ray;
 const Spheres = @import("spheres.zig").Spheres;
 const ThreadSafeProgressBar = @import("threadsafeprogressbar.zig").ThreadSafeProgressBar;
@@ -23,26 +23,37 @@ pub const World = struct { // Scene? (separate camera?)
     sky_color: Color,
     void_color: Color,
 
-    pub const Json = struct { // declare camera stuff first? (check everywhere) put outside World? (in separate file?)
-        planes: []struct {
+    pub const Json = struct {
+        camera: struct {
+            position: Vector3,
+            yaw: f32,
+            pitch: f32,
+            viewport_width: f32,
+            fov: f32,
+        },
+
+        sky_color: Color,
+        void_color: Color,
+
+        planes: []const struct {
             reference_point: Vector3,
             normal: Vector3,
             color: Color,
             shininess: f32,
         },
-        triangles: []struct {
+        triangles: []const struct {
             vertices: [3]Vector3,
             color: Color,
             shininess: f32,
         },
-        spheres: []struct {
+        spheres: []const struct {
             center: Vector3,
             radius: f32,
             color: Color,
             shininess: f32,
         },
-        stl_objects: []struct { // const? (check everywhere)
-            binary_file_sub_path: []const u8, // binary_file_sub_path?
+        stl_objects: []const struct {
+            binary_file_sub_path: []const u8,
             position: Vector3,
             yaw: f32,
             pitch: f32,
@@ -51,16 +62,6 @@ pub const World = struct { // Scene? (separate camera?)
             shininess: f32,
         },
 
-        camera: struct { // look_from & look_at?
-            position: Vector3,
-            yaw: f32,
-            pitch: f32,
-            viewport_width: f32,
-            fov: f32,
-        },
-        sky_color: Color,
-        void_color: Color,
-
         pub fn initFromFile(allocator: std.mem.Allocator, sub_path: []const u8) !Json {
             const file = try std.fs.cwd().openFile(sub_path, .{});
             defer file.close();
@@ -68,8 +69,6 @@ pub const World = struct { // Scene? (separate camera?)
             const string = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
             return std.json.parseFromSliceLeaky(Json, allocator, string, .{});
         }
-
-        // TODO come up with a better solution than caching; stop worrying about gamma? (if yes, get rid of generic nature of Pixmap and rename to Ppm)
     };
 
     pub fn initFromJsonStruct(allocator: std.mem.Allocator, json: Json) !World { // put in Json? initializeWorldFromJsonStruct? createWorldFromJsonStruct? divide this large block into a bunch of functions?
@@ -81,13 +80,13 @@ pub const World = struct { // Scene? (separate camera?)
         };
         for (world.planes.geometries, world.planes.materials, json.planes) |*geometry, *material, json_plane| {
             geometry.reference_point = json_plane.reference_point;
-            geometry.normal = vector3_utilities.unit(json_plane.normal); // geometry.unit_normal?
+            geometry.unit_normal = vector3_utilities.unit(json_plane.normal); // geometry.unit_normal?
 
             material.color = json_plane.color;
             material.shininess = json_plane.shininess;
         }
 
-        const getStlTriangleCountFromFile = struct { // ...
+        const getStlTriangleCountFromFile = struct {
             inline fn getStlTriangleCountFromFile(file: std.fs.File) !u32 {
                 var triangle_count: u32 = undefined;
                 const byte_count = @sizeOf(@TypeOf(triangle_count));
@@ -101,21 +100,20 @@ pub const World = struct { // Scene? (separate camera?)
             }
         }.getStlTriangleCountFromFile;
 
-        const copyJsonStlObjectToTriangles = struct { // ...
+        const copyJsonStlObjectToTriangles = struct {
             inline fn copyJsonObjectToTriangles(json_stl_object: anytype, file: std.fs.File, triangles: Triangles) !void {
                 try file.seekBy(12 - 14);
                 for (triangles.geometries, triangles.materials) |*geometry, *material| {
                     try file.seekBy(14);
-                    var vertex_array: [3][3]f32 = undefined; // name? Vector3? directly write to geometry.vertex_array?
+                    var vertex_array: [3][3]f32 = undefined; // directly write to geometry.vertex_array?
 
                     const bytes_read = try file.readAll(@as(*[36]u8, @ptrCast(&vertex_array)));
                     if (bytes_read != 36)
                         return error.EndOfFile;
 
                     inline for (0..3) |i| {
-                        inline for (0..3) |j| { // bitcast from [3]f32 to Vector3?
+                        inline for (0..3) |j| // bitcast from [3]f32 to Vector3?
                             geometry.vertex_array[i][j] = vertex_array[i][j];
-                        }
                     }
 
                     const yaw = std.math.degreesToRadians(f32, json_stl_object.yaw);
@@ -130,7 +128,7 @@ pub const World = struct { // Scene? (separate camera?)
 
                         vertex.* = json_stl_object.position + @as(Vector3, @splat(json_stl_object.scale)) * transformed_vertex;
                     }
-                    geometry.updateNormal();
+                    geometry.updateUnitNormal();
 
                     material.color = json_stl_object.color;
                     material.shininess = json_stl_object.shininess;
@@ -159,7 +157,7 @@ pub const World = struct { // Scene? (separate camera?)
 
         for (world.triangles.geometries[0..json.triangles.len], world.triangles.materials[0..json.triangles.len], json.triangles) |*geometry, *material, json_triangle| {
             geometry.vertex_array = json_triangle.vertices;
-            geometry.updateNormal();
+            geometry.updateUnitNormal();
 
             material.color = json_triangle.color;
             material.shininess = json_triangle.shininess;
@@ -206,40 +204,39 @@ pub const World = struct { // Scene? (separate camera?)
         return world;
     }
 
-    pub fn raytrace(self: World, allocator: std.mem.Allocator, thread_count: usize, rays_per_pixel: u32, image: Pixmap(u8), max_ray_depth: u32, gamma: f32, progress_bar: *ThreadSafeProgressBar) !void { // check pass by value / reference and ownership everywhere
+    pub fn raytrace(self: World, allocator: std.mem.Allocator, thread_count: usize, rays_per_pixel: u32, image: Ppm, max_ray_depth: u32, gamma: f32, progress_bar: *ThreadSafeProgressBar) !void {
         const child_threads = try allocator.alloc(std.Thread, thread_count - 1);
 
         {
             progress_bar.start(image.data.len / 3);
             defer ThreadSafeProgressBar.finish();
 
-            for (child_threads, 0..) |*thread, i| {
+            for (child_threads, 0..) |*thread, i|
                 thread.* = try std.Thread.spawn(.{}, raytraceThunk, .{ self, thread_count, i, rays_per_pixel, image, max_ray_depth, gamma, progress_bar });
-            }
             self.raytraceThunk(thread_count, thread_count - 1, rays_per_pixel, image, max_ray_depth, gamma, progress_bar);
-            for (child_threads) |thread| {
-                thread.join(); // do using {} (against short hand notation)
-            }
+            for (child_threads) |thread|
+                thread.join();
         }
     }
 
-    fn raytraceThunk(self: World, thread_count: usize, thread_index: usize, rays_per_pixel: u32, image: Pixmap(u8), max_ray_depth: u32, gamma: f32, progress_bar: *ThreadSafeProgressBar) void {
+    fn raytraceThunk(self: World, thread_count: usize, thread_index: usize, rays_per_pixel: u32, image: Ppm, max_ray_depth: u32, gamma: f32, progress_bar: *ThreadSafeProgressBar) void {
         var prng = std.rand.DefaultPrng.init(thread_index);
         const random = prng.random();
 
         var i: usize = thread_index;
         while (i < image.data.len / 3) : (i += thread_count) {
             var average_color: Vector3 = @splat(0);
+
             for (0..rays_per_pixel) |_| {
                 var depth: u32 = 1;
                 var accumulated_color: Vector3 = @splat(1);
                 var current_ray = self.camera.ray(image, random, i);
+
                 while (true) {
                     const closest_object_data = Ray.getClosestObjectData(.{ self.planes, self.triangles, self.spheres }, current_ray);
 
-                    if (closest_object_data.distance == std.math.floatMax(f32)) {
+                    if (closest_object_data.distance == std.math.floatMax(f32))
                         break;
-                    }
 
                     const closest_object_material = switch (closest_object_data.parent_type_id) {
                         .planes => self.planes.materials[closest_object_data.index],
@@ -249,35 +246,35 @@ pub const World = struct { // Scene? (separate camera?)
 
                     accumulated_color *= closest_object_material.color;
 
-                    if (depth == max_ray_depth) {
+                    if (depth == max_ray_depth)
                         break;
-                    }
 
                     depth += 1;
 
                     const hit_coordinates = current_ray.coordinates(closest_object_data.distance);
-                    const normal = switch (closest_object_data.parent_type_id) {
-                        .planes => self.planes.geometries[closest_object_data.index].getNormal(hit_coordinates),
-                        .spheres => self.spheres.geometries[closest_object_data.index].getNormal(hit_coordinates),
-                        .triangles => self.triangles.geometries[closest_object_data.index].getNormal(hit_coordinates),
+                    const unit_normal = switch (closest_object_data.parent_type_id) {
+                        .planes => self.planes.geometries[closest_object_data.index].getUnitNormal(hit_coordinates),
+                        .spheres => self.spheres.geometries[closest_object_data.index].getUnitNormal(hit_coordinates),
+                        .triangles => self.triangles.geometries[closest_object_data.index].getUnitNormal(hit_coordinates),
                     };
 
-                    if (-vector3_utilities.dot(current_ray.direction, normal) < Ray.hit_directness_epsilon) {
+                    if (-vector3_utilities.dot(current_ray.direction, unit_normal) < Ray.hit_directness_epsilon)
                         break;
-                    }
 
                     current_ray.origin = hit_coordinates;
                     current_ray.direction = if (random.float(f32) < closest_object_material.shininess)
-                        (current_ray.direction - @as(Vector3, @splat(2 * vector3_utilities.dot(current_ray.direction, normal))) * normal)
+                        (current_ray.direction - @as(Vector3, @splat(2 * vector3_utilities.dot(current_ray.direction, unit_normal))) * unit_normal)
                     else
-                        (vector3_utilities.unit(normal + vector3_utilities.randomUnit(random)));
+                        (vector3_utilities.unit(unit_normal + vector3_utilities.randomUnit(random)));
                 }
+
                 average_color += (self.void_color + @as(Vector3, @splat((current_ray.direction[1] + 1) / 2)) * (self.sky_color - self.void_color)) * accumulated_color;
             }
-            average_color /= @as(Vector3, @splat(@as(f32, @floatFromInt(rays_per_pixel)))); // need @as()? propose removal of this @as business altogether or just allow me to coerce implicitly in cases like these
-            inline for (0..3) |j| { // @ptrCast() for @Vector()? why don't @Vector()s support field access??
-                image.data[3 * i + j] = @as(u8, @intFromFloat(std.math.pow(f32, average_color[j], 1 / gamma) * 255));
-            }
+
+            average_color /= @splat(@as(f32, @floatFromInt(rays_per_pixel)));
+
+            inline for (0..3) |j| // @ptrCast() for @Vector()? why don't @Vector()s support field access?
+                image.data[3 * i + j] = @intFromFloat(std.math.pow(f32, average_color[j], 1 / gamma) * 255);
 
             progress_bar.advance();
         }
