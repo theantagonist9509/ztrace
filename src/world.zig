@@ -80,7 +80,7 @@ pub const World = struct { // Scene? (separate camera?)
         };
         for (world.planes.geometries, world.planes.materials, json.planes) |*geometry, *material, json_plane| {
             geometry.reference_point = json_plane.reference_point;
-            geometry.unit_normal = vector3_utilities.unit(json_plane.normal); // geometry.unit_normal?
+            geometry.unit_normal = vector3_utilities.unit(json_plane.normal);
 
             material.color = json_plane.color;
             material.shininess = json_plane.shininess;

@@ -12,8 +12,9 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
-    var parsed_args: struct {
-        executable_sub_path: []const u8,
+    const executable_sub_path = args.next().?;
+
+    const ParsedArgs = struct {
         json_sub_path: []const u8,
         num_threads: usize,
         image_width: u32,
@@ -22,10 +23,10 @@ pub fn main() !void {
         max_ray_depth: u32,
         gamma: f32,
         image_sub_path: []const u8,
-    } = undefined;
+    };
 
-    parseArgs(&args, &parsed_args) catch {
-        try printUsageErrorMessage(parsed_args);
+    const parsed_args = parseArgs(ParsedArgs, &args) catch {
+        try printUsageErrorMessage(ParsedArgs, executable_sub_path);
         return error.UsageError;
     };
 
@@ -44,31 +45,30 @@ pub fn main() !void {
     try image.writeToFile(parsed_args.image_sub_path);
 }
 
-inline fn parseArgs(args: *std.process.ArgIterator, parsed_args_out_pointer: anytype) !void {
-    inline for (std.meta.fields(@TypeOf(parsed_args_out_pointer.*))) |field_info| {
-        if (args.next()) |arg| {
-            const T = field_info.type;
-            const name = field_info.name;
+inline fn parseArgs(comptime ParsedArgs: type, args: *std.process.ArgIterator) !ParsedArgs {
+    var parsed_args: ParsedArgs = undefined;
 
-            switch (@typeInfo(T)) {
-                .Pointer => |info| {
-                    if (info.size == .Slice and info.child == u8) {
-                        @field(parsed_args_out_pointer.*, name) = @as([]const u8, @ptrCast(arg));
+    inline for (std.meta.fields(ParsedArgs)) |field_info| {
+        if (args.next()) |arg| {
+            switch (@typeInfo(field_info.type)) {
+                .Pointer => |pointer_info| {
+                    if (pointer_info.size == .Slice and pointer_info.child == u8) {
+                        @field(parsed_args, field_info.name) = arg;
                     } else {
-                        @compileError("Parsing of type " ++ @typeName(T) ++ " not handled");
+                        @compileError("Parsing of type " ++ @typeName(field_info.type) ++ " not handled");
                     }
                 },
-                .Int => |info| {
-                    if (info.signedness == .unsigned) {
-                        @field(parsed_args_out_pointer.*, name) = try std.fmt.parseUnsigned(T, arg, 10);
+                .Int => |int_info| {
+                    if (int_info.signedness == .unsigned) {
+                        @field(parsed_args, field_info.name) = try std.fmt.parseUnsigned(field_info.type, arg, 10);
                     } else {
-                        @compileError("Parsing of type " ++ @typeName(T) ++ " not handled");
+                        @compileError("Parsing of type " ++ @typeName(field_info.type) ++ " not handled");
                     }
                 },
                 .Float => {
-                    @field(parsed_args_out_pointer.*, name) = try std.fmt.parseFloat(T, arg);
+                    @field(parsed_args, field_info.name) = try std.fmt.parseFloat(field_info.type, arg);
                 },
-                else => @compileError("Parsing of type " ++ @typeName(T) ++ " not handled"),
+                else => @compileError("Parsing of type " ++ @typeName(field_info.type) ++ " not handled"),
             }
         } else {
             return error.ParseArgsError;
@@ -77,12 +77,14 @@ inline fn parseArgs(args: *std.process.ArgIterator, parsed_args_out_pointer: any
 
     if (args.skip())
         return error.ParseArgsError;
+
+    return parsed_args;
 }
 
-fn printUsageErrorMessage(args_struct: anytype) !void {
-    try std.io.getStdOut().writer().print("Usage: {s}", .{args_struct.executable_sub_path});
+fn printUsageErrorMessage(comptime ParsedArgs: type, executable_sub_path: []const u8) !void {
+    try std.io.getStdOut().writer().print("Usage: {s}", .{executable_sub_path});
 
-    for (std.meta.fieldNames(@TypeOf(args_struct)).*[1..]) |field_name|
+    for (std.meta.fieldNames(ParsedArgs).*) |field_name|
         try std.io.getStdOut().writer().print(" <{s}>", .{field_name});
 
     try std.io.getStdOut().writeAll("\n");
